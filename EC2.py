@@ -117,8 +117,9 @@ def describe_ec2_instances(account_profile, all_data):
             "Tags[?Key=='Environment'].Value | [0], "
             "Tags[?Key=='Cost Centre'].Value | [0], "
             "Tags[?Key=='Project'].Value | [0], "
+            "Tags[?Key=='WBS Code'].Value | [0], "
             "CpuOptions.CoreCount, CpuOptions.ThreadsPerCore, "
-            "PrivateIpAddress, PublicIpAddress, VpcId, SubnetId, PlatformDetails]"
+            "PrivateIpAddress, PublicIpAddress, VpcId, SubnetId, PlatformDetails, ImageId]"
         ),
         "--output", "json",
         "--profile", account_profile,
@@ -135,9 +136,11 @@ def describe_ec2_instances(account_profile, all_data):
             instance_ids = [item[1] for item in flat_data if item[1]]
             volumes_by_instance = get_attached_volumes(instance_ids, account_profile)
 
+
+            
             for item in flat_data:
-                core_count = item[11]
-                threads_per_core = item[12]
+                core_count = item[12]  # Updated index for CoreCount
+                threads_per_core = item[13]  # Updated index for ThreadsPerCore
                 vcpu = core_count * threads_per_core if core_count and threads_per_core else None
                 item.append(vcpu)
                 
@@ -145,8 +148,11 @@ def describe_ec2_instances(account_profile, all_data):
                 instance_type = item[2]
                 ram_gb = get_instance_memory(instance_type)
                 item.append(ram_gb)
+                
 
-                instance_id = item[1]
+
+                # Process volume information
+                instance_id = item[1]  # Get instance ID from the current item
                 volume_info = volumes_by_instance.get(instance_id, [])
                 item.append(", ".join(volume_info))
 
@@ -170,9 +176,9 @@ def describe_ec2_instances(account_profile, all_data):
 
             columns = [
                 "Name", "InstanceId", "InstanceType", "State", "Application", 
-                "Application Owner", "Role", "Owner", "Environment", "Cost Centre", "Project",
+                "Application Owner", "Role", "Owner", "Environment", "Cost Centre", "Project", "WBS Code",
                 "CoreCount", "ThreadsPerCore", "PrivateIp", "PublicIp", 
-                "VpcId", "SubnetId", "PlatformDetails", "vCPU", "RAM_GB",
+                "VpcId", "SubnetId", "PlatformDetails", "ImageId", "vCPU", "RAM_GB",
                 "VolumeInfo", "TotalVolumeSizeGB", "VolumeTypes"
             ]
 
