@@ -4,7 +4,29 @@ ta_exclusion_builder.py - Build AWS CLI commands for Trusted Advisor recommendat
 
 This script helps build (but does not execute) AWS CLI commands to exclude specific resources
 from Trusted Advisor recommendations. It searches for recommendations by keyword, then filters
-resources by a matching string, and generates the appropriate exclusion command.
+resources by a matching string, and generates the appropriate exclusion command(s).
+
+If there are many resources to exclude, the script will automatically split them into multiple
+commands to avoid AWS CLI length constraints.
+
+Usage:
+    python ta_exclusion_builder.py [options]
+
+Options:
+    --profile PROFILE       AWS CLI profile name
+    --check-keyword TEXT    Substring to search in recommendation name
+    --resource-match TEXT   Substring to match in resourceId or ARN
+    --region REGION         AWS region (default: ap-southeast-2)
+
+Examples:
+    # Run with all parameters
+    python ta_exclusion_builder.py --profile int --check-keyword "RDS storage encryption" --resource-match "sql01"
+    
+    # Run interactively
+    python ta_exclusion_builder.py
+
+The script will prompt for any missing parameters and allow you to choose whether to exclude all resources
+or specific ones matching your criteria.
 """
 
 import argparse
@@ -153,24 +175,49 @@ def list_recommendation_resources(profile: str, region: str, recommendation: Dic
     return matching_resources
 
 
-def build_exclusion_json(resources: List[Dict[str, Any]]) -> str:
-    """Build JSON for resource exclusions."""
-    exclusions = []
-    
-    for resource in resources:
-        exclusions.append({
-            "arn": resource["arn"],
-            "isExcluded": True
-        })
-    
-    return json.dumps(exclusions)
+# This function is no longer used as the functionality is now in build_cli_commands
+# Keeping it commented out for reference
+# def build_exclusion_json(resources: List[Dict[str, Any]]) -> str:
+#     """Build JSON for resource exclusions."""
+#     exclusions = []
+#     
+#     for resource in resources:
+#         exclusions.append({
+#             "arn": resource["arn"],
+#             "isExcluded": True
+#         })
+#     
+#     return json.dumps(exclusions)
 
 
-def build_cli_command(profile: str, region: str, exclusions_json: str) -> str:
-    """Build the final AWS CLI command for batch exclusion update."""
-    return (f"aws trustedadvisor batch-update-recommendation-resource-exclusion "
-            f"--recommendation-resource-exclusions '{exclusions_json}' "
-            f"--region {region} ")
+def build_cli_commands(profile: str, region: str, resources: List[Dict[str, Any]]) -> List[str]:
+    """Build AWS CLI commands for batch exclusion update, splitting into multiple commands if needed."""
+    # Maximum number of resources per command to avoid length constraints
+    MAX_RESOURCES_PER_COMMAND = 25
+    commands = []
+    
+    # Split resources into chunks
+    for i in range(0, len(resources), MAX_RESOURCES_PER_COMMAND):
+        chunk = resources[i:i + MAX_RESOURCES_PER_COMMAND]
+        
+        # Build exclusion JSON for this chunk
+        exclusions = []
+        for resource in chunk:
+            exclusions.append({
+                "arn": resource["arn"],
+                "isExcluded": True
+            })
+        
+        exclusions_json = json.dumps(exclusions)
+        
+        # Build command for this chunk
+        command = (f"aws trustedadvisor batch-update-recommendation-resource-exclusion "
+                  f"--recommendation-resource-exclusions '{exclusions_json}' "
+                  f"--region {region} ")
+        
+        commands.append(command)
+    
+    return commands
 
 
 def main() -> None:
@@ -237,18 +284,22 @@ def main() -> None:
         print(f"{i}. ID: {resource_id}")
         print(f"   ARN: {resource_arn}")
     
-    # Build exclusion JSON
-    exclusions_json = build_exclusion_json(resources)
+    # Build CLI commands
+    cli_commands = build_cli_commands(profile, region, resources)
     
-    # Build final CLI command
-    cli_command = build_cli_command(profile, region, exclusions_json)
-    
-    # Print summary and command
+    # Print summary and commands
     print("\n" + "=" * 80)
-    success("COMMAND READY (copy and paste to execute):")
-    print("-" * 80)
-    print(cli_command)
-    print("-" * 80)
+    if len(cli_commands) == 1:
+        success("COMMAND READY (copy and paste to execute):")
+    else:
+        success(f"COMMANDS READY ({len(cli_commands)} commands due to resource count):")
+    
+    for i, command in enumerate(cli_commands, 1):
+        if len(cli_commands) > 1:
+            print(f"\nCommand {i} of {len(cli_commands)}:")
+        print("-" * 80)
+        print(command)
+        print("-" * 80)
     
     # Print summary
     info(f"Summary:")
